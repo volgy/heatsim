@@ -20,11 +20,10 @@
 
 import numpy as np
 import taichi as ti
-
-#ti.init(arch=ti.gpu)
-ti.aot.start_recording('debug.yml')
-ti.init(arch=ti.cc)
 import utils
+
+ti.init(arch=ti.gpu)
+
 
 alpha, sources, outline = utils.load_problem("kettle.png")
 size_x, size_y = alpha.shape[:2] # size of the domain
