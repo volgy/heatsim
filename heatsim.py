@@ -74,4 +74,4 @@ while not gui.get_event(ti.GUI.ESCAPE):
     gui.show()
     chrono.log("show")
 
-    #print(chrono)
+    print(chrono)

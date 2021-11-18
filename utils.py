@@ -74,23 +74,7 @@ def convert_to_field(arr, dtype=ti.float32):
     return field
 
 
-@ti.kernel
-def _render(
-    background: ti.template(),
-    field: ti.template(),
-    lut: ti.template(),
-    img: ti.template()):
-
-
-    for i, j in field:
-        idx = 0
-        idx = min(max(0, int(field[i, j] * 255)), 255)
-        if any(background[i, j] > 0):
-            img[i, j] = background[i, j]
-        else:
-            img[i, j] = lut[idx]
-
-
+@ti.data_oriented
 class Renderer:
     """Fast field rendering with outline/background and colormaps.
 
@@ -113,5 +97,15 @@ class Renderer:
 
 
     def render(self, field):
-        _render(self.background, field, self.lut, self.img)
+        self._render(field)
         return self.img
+
+    @ti.kernel
+    def _render(self, field: ti.template()):
+        for i, j in field:
+            idx = 0
+            idx = min(max(0, int(field[i, j] * 255)), 255)
+            if any(self.background[i, j] > 0):
+                self.img[i, j] = self.background[i, j]
+            else:
+                self.img[i, j] = self.lut[idx]
