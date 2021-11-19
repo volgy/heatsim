@@ -21,7 +21,9 @@
 import numpy as np
 import matplotlib.cm as cm
 from time import time
+from numpy.core.numerictypes import obj2sctype
 import taichi as ti
+
 
 class Chrono:
     """Simple benchmarking tool (time log)"""
@@ -65,29 +67,47 @@ class Chrono:
         return "".join(tokens)
 
 
-def load_problem(filename, dtype=np.float32):
+def load_problem(filename, materials):
     """Load a problem from a PNG file.
 
-    The PNG file is expected to have the following R, G, B channels:
-    - R: the diffusivity parameter of the material
-    - G: the sources of heat
-    - B: the outline (background) image
+    The PNG file is expected to be a gray-scale image (otherwise the first
+    channel is used). The color values represent different material types,
+    which are mapped according to the materials parameter.
 
-    Returns the following (normalized if dtype=float) numpy arrays:
-    (diffusivity, sources, outline)
+    Returns the following numpy arrays:
+    (c, k, s, outline)
     """
-    problem = ti.imread(filename)
+    problem = ti.imread(filename)[:, :, 0]
 
-    diffusivity = np.asarray(problem[:, :, 0], dtype)
-    sources = np.asarray(problem[:, :, 1], dtype)
-    outline = np.asarray(problem[:, :, 2], dtype)
+    objects = np.unique(problem)
+    missing_materials = set(objects) - set(materials.keys())
+    if missing_materials:
+        raise ValueError(f"No materials are defined for: {missing_materials}")
 
-    if np.issubdtype(dtype, np.floating):
-        diffusivity /= 255.0
-        sources /= 255.0
-        outline /= 255.0
+    missing_objects = set(materials.keys()) - set(objects)
+    if missing_objects:
+        print(f"warning: no objects found for: {missing_objects}")
 
-    return diffusivity, sources, outline
+    lut_c = np.zeros(256, dtype=np.float32)
+    lut_k = np.zeros(256, dtype=np.float32)
+    lut_s = np.zeros(256, dtype=np.float32)
+
+    for material, spec in materials.items():
+        lut_c[material] = spec["c"]
+        lut_k[material] = spec["k"]
+        lut_s[material] = spec["s"]
+
+    c = lut_c[problem]
+    k = lut_k[problem]
+    s = lut_s[problem]
+
+    # Poor man's edge detector
+    outline = np.abs(
+        np.diff(problem, axis=0, prepend=0)
+        + np.diff(problem, axis=1, prepend=0)
+    )
+
+    return c, k, s, outline
 
 
 def convert_to_field(arr, dtype=ti.float32):
@@ -108,16 +128,15 @@ class Renderer:
         self.lut = ti.Vector.field(n=3, dtype=ti.uint8, shape=(256,))
         colormap = cm.get_cmap(cmap)
         for i in range(256):
-            self.lut[i] = colormap(i/255.0, bytes=True)[:3]
-
+            self.lut[i] = colormap(i / 255.0, bytes=True)[:3]
 
         shape = background.shape
         self.background = ti.Vector.field(n=3, dtype=ti.uint8, shape=shape)
         self.background.from_numpy(
-            np.repeat(255 * background[..., np.newaxis], 3, axis=2))
+            np.repeat(255 * background[..., np.newaxis], 3, axis=2)
+        )
 
         self.img = ti.Vector.field(n=3, dtype=ti.uint8, shape=shape)
-
 
     def render(self, field):
         self._render(field)
