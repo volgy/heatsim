@@ -23,14 +23,14 @@ import taichi as ti
 import utils
 
 ti.init(arch=ti.gpu)
+# ti.aot.start_recording('heatsim.yml')
+# ti.init(arch=ti.cc)
 
 
 alpha, sources, outline = utils.load_problem("kettle.png")
-size_x, size_y = alpha.shape[:2] # size of the domain
-
-alpha = 255.0 * alpha # scaling (mm2/s)
+size_x, size_y = alpha.shape[:2]  # size of the domain
 delta_x = 0.25  # scaling (mm/px)
-delta_t = (delta_x ** 2)/(4 * alpha.max()) # numerical stability constraint
+delta_t = (delta_x ** 2) / (4 * alpha.max())  # numerical stability constraint
 
 gamma = utils.convert_to_field((alpha * delta_t) / (delta_x ** 2))
 sources = utils.convert_to_field(sources)
@@ -39,6 +39,7 @@ sources = utils.convert_to_field(sources)
 t = ti.field(dtype=ti.float32, shape=(size_x, size_y))
 t_next = ti.field(dtype=ti.float32, shape=t.shape)
 
+
 @ti.kernel
 def diffusion(t: ti.template(), t_next: ti.template()):
     for i, j in t:
@@ -46,22 +47,36 @@ def diffusion(t: ti.template(), t_next: ti.template()):
             if sources[i, j] > 0:
                 t_next[i, j] = sources[i, j]
             else:
-                t_next[i, j] = t[i, j] + gamma[i, j] * (
-                    t[i+1, j] + t[i-1, j] + t[i, j+1] + t[i, j-1] - 4*t[i, j])
+
+                t_next[i, j] = (
+                    t[i, j]
+                    + 0.5 * (
+                    (gamma[i + 1, j] + gamma[i, j])
+                    * (t[i + 1, j] - t[i, j])
+                    - (gamma[i - 1, j] + gamma[i, j])
+                    * (t[i, j] - t[i - 1, j])
+                    +  (gamma[i, j + 1] + gamma[i, j])
+                    * (t[i, j + 1] - t[i, j])
+                    -
+                    (gamma[i, j - 1] + gamma[i, j])
+                    * (t[i, j] - t[i, j - 1]))
+                )
 
 
 scene = utils.Renderer(outline)
 gui = ti.GUI("Heatsim", res=(size_x, size_y), fast_gui=True)
+
+steps_per_frame = 1000
 while not gui.get_event(ti.GUI.ESCAPE):
     chrono = utils.Chrono()
 
-    diffusion(t, t_next)
-    t, t_next = t_next, t
+    for _ in range(steps_per_frame):
+        diffusion(t, t_next)
+        t, t_next = t_next, t
     chrono.log("diffusion")
 
-
     if gui.is_pressed(ti.GUI.LMB):
-        mouse_x, mouse_y = (gui.get_cursor_pos())
+        mouse_x, mouse_y = gui.get_cursor_pos()
         t[int(mouse_x * size_x), int(mouse_y * size_y)] += 1.0
     chrono.log("mouse")
 
@@ -74,4 +89,10 @@ while not gui.get_event(ti.GUI.ESCAPE):
     gui.show()
     chrono.log("show")
 
-    print(chrono)
+    # trying to calibrate for optimal frame rate (tune down, only)
+    fps = int(1.0 / chrono.elapsed("set_image")) # show() may wait for a frame
+    if fps < gui.fps_limit:
+        steps_per_frame = max(1, int(0.95 * steps_per_frame))
+        print(f"Steps per frame: {steps_per_frame}")
+
+    #print(chrono)

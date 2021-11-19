@@ -33,6 +33,29 @@ class Chrono:
     def log(self, event):
         self.stamps.append((event, time()))
 
+    def elapsed(self, end=None, start=None):
+        """Returns the elapsed time between two events.
+
+        Default is the first and last events.
+        """
+
+        def find_stamp(event):
+            for e, t in self.stamps:
+                if e == event:
+                    return t
+            raise ValueError(f"Event {event} not found")
+
+        if start is None:
+            t_start = self.stamps[0][1]
+        else:
+            t_start = find_stamp(start)
+        if end is None:
+            t_end = self.stamps[-1][1]
+        else:
+            t_end = find_stamp(end)
+
+        return t_end - t_start
+
     def __repr__(self):
         total = self.stamps[-1][1] - self.stamps[0][1]
         tokens = []
