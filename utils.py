@@ -102,9 +102,13 @@ def load_problem(filename, materials):
     s = lut_s[problem]
 
     # Poor man's edge detector
-    outline = np.abs(
-        np.diff(problem, axis=0, prepend=0)
-        + np.diff(problem, axis=1, prepend=0)
+    outline = np.asarray(
+        (
+            np.diff(problem, axis=0, prepend=0) ** 2
+            + np.diff(problem, axis=1, prepend=0) ** 2
+        )
+        > 0,
+        dtype=np.uint8,
     )
 
     return c, k, s, outline
